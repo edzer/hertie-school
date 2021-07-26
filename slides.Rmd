@@ -1,0 +1,46 @@
+---
+title: "GeoData and Spatial Data Analysis with R"
+author: "Edzer Pebesma"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 2
+---
+
+```{r, echo=FALSE, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE)
+```
+
+
+Program: 
+
+* 10:00 AM GeoData and Spatial Data Analysis with R (Part I)
+* 12:00 PM Short Break
+* 12:15 PM GeoData and Spatial Data Analysis with R (Part II)
+* 02:15 PM end
+
+Each full hour will have 45 minutes lecturing, followed by 15 mins Q&A.
+
+# Context
+
+* **Why "GeoData and Spatial Data"?** Because the organisation chose
+that title for me. I consider "GeoData" and "Spatial Data"
+as identical. "Geo" refers to "Earth", so some spatial data,
+e.g. astronomic images or images taken through microscopes or
+MRT scans are less Earth-bound, and would be better described as
+"Spatial Data".
+* **Why "Data Analysis?"** Because this is a summer school on Data Science.
+* **Why with R?**  Because R is an open source environment **made for
+data analysis and graphics** that **runs on all platforms**. If we'd use
+a closed source environment, we'd miss the opportunity to scrutinize
+computations and fail to meet the _science_ goal of _Data Science_;
+if we'd use a general purpose programming language we would (more)
+easily end up in a package installation hell.
+* **Why me?** I have been involved in R, and development of R-Spatial
+packages, for around 20 years, teach this subject on a regular basis,
+and recently finished the draft of the book [Spatial Data Science
+(with applications in R)](https://r-spatial.org/book)
+
