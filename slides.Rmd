@@ -35,12 +35,217 @@ MRT scans are less Earth-bound, and would be better described as
 * **Why "Data Analysis?"** Because this is a summer school on Data Science.
 * **Why with R?**  Because R is an open source environment **made for
 data analysis and graphics** that **runs on all platforms**. If we'd use
-a closed source environment, we'd miss the opportunity to scrutinize
+a closed source environment, we'd miss the opportunity to reproduce and scrutinize
 computations and fail to meet the _science_ goal of _Data Science_;
 if we'd use a general purpose programming language we would (more)
 easily end up in a package installation hell.
 * **Why me?** I have been involved in R, and development of R-Spatial
 packages, for around 20 years, teach this subject on a regular basis,
 and recently finished the draft of the book [Spatial Data Science
-(with applications in R)](https://r-spatial.org/book)
+(with applications in R)](https://r-spatial.org/book).
 
+## How to use these slides?
+
+These slides were created with R and the R package `rmarkdown`. The
+source of these slides is an R-markdown document that can be
+loaded in R, and _executed_ there (just like a Jupyter notebook,
+but simpler). To do this, take the following steps:
+
+1. Go to the [GitHub page](https://github.com/edzer/hertie-school) of this course
+2. Click on the file `slides.Rmd`
+3. Click on the "Raw" tab
+4. Right-click on that page, "save as", and save it to a local copy of `slides.Rmd`
+5. Click (or double-click) on this file, and RStudio should open it, showing the file
+6. In RStudio, click "knit" to recreate the entire rendered document, which _runs all the R chunks_
+7. For running individual R chunks, (notebook "cells"), use the arrows "Run all chunks above", after which you can use "Run current chunk"
+
+## What to expect?
+
+10-11: Spatial data and geometries
+
+* What is so special about spatial data?
+* How can we represent spatial data in R?
+* What does a coordinate mean?
+* What does _coordinate reference system_ mean?
+* Geometries, measures, predicates, transformers
+* Q&A
+
+11-12: Attributes
+
+* Support, aggregates
+* `gapminder` example
+
+12:15-13:15: Data cubes, large datasets
+
+* `gapminder` data cube
+* raster data
+* raster time series
+* image data cubes, image collections
+
+13:15-14:15: Models
+
+* point patterns
+* geostatistical data
+* lattice data
+
+# Spatial data and geometries
+
+## What is so special about spatial data?
+
+## How can we represent spatial data in R?
+
+## What does a coordinate mean?
+
+
+```{r out.width='100%',echo=FALSE}
+knitr::include_graphics("https://keen-swartz-3146c4.netlify.app/sds_files/figure-html/sphere-1.png")
+```
+
+Coordinates are either 
+
+## What does _coordinate reference system_ mean?
+## Geometries, measures, predicates, transformers
+## Q&A
+
+# Attributes
+
+## `gapminder` example
+
+From the help of `gapminder` in package `gapminder` (by Jenny Bryan)
+"by continent, which country experienced the sharpest 5-year drop
+in life expectancy and what was the drop?"
+```{r}
+library(dplyr)
+library(gapminder)
+gapminder |>
+   group_by(continent, country) |>
+   select(country, year, continent, lifeExp) |>
+   mutate(le_delta = lifeExp - lag(lifeExp)) |>
+   summarize(worst_le_delta = min(le_delta, na.rm = TRUE)) |>
+   filter(min_rank(worst_le_delta) < 2) |>
+   arrange(worst_le_delta)
+```
+     
+Now, can we show a map of yearly changes in life expectancy?
+
+Step 1: match the table to country geometries:
+
+```{r}
+library(rnaturalearth)
+library(sf)
+ne = ne_countries(returnclass = "sf")
+# Try to match country names:
+m = match(gapminder$country, ne$admin)
+(u = unique(gapminder$country[is.na(m)]))
+```
+
+So this is pretty ugly. We can solve it the hard way, manually
+sorting out:
+
+```{r}
+n = as.character(ne$admin)
+(conv = tribble(
+		~old, ~new, 
+		u[3], n[34],
+		u[4], n[35],
+		u[5], n[32],
+        u[6], n[63],
+		u[8], n[130],
+		u[9], n[88],
+		u[13], n[148],
+		u[15], n[150],
+		u[16], n[165],
+		u[17], n[169],
+		u[19], n[174]
+))
+library(stringr)
+repl = conv$new
+names(repl) = conv$old
+gapminder$ncountry =
+  str_replace_all(gapminder$country, repl)
+m = match(gapminder$ncountry, ne$admin)
+(un = unique(gapminder$country[is.na(m)]))
+```
+reducing the number of unmatched countries from 19 to 8.
+
+Now we can do the big trick, and add a geometry column to `gapminder`:
+
+```{r}
+gapminder_sf = st_sf(gapminder, geometry = ne$geometry[m])
+gapminder_sf$geometry
+sum(is.na(m))
+```
+
+We see that the `NA` values in `m` have been filled with empty
+geometries. Let's look at the geometries:
+```{r}
+st_geometry(gapminder_sf) |> plot()
+```
+
+Oops! We didn't see that from the table above! Also the question
+didn't mention "of all countries with complete time series"...
+
+The help from `gapminder` (can you find that?) says: "The
+supplemental data frame ‘gapminder_unfiltered’ was not filtered
+on ‘year’ or for complete data and has 3313 rows." Maybe we
+should use that?
+
+```{r}
+gapminder_unfiltered$ncountry =
+  str_replace_all(gapminder_unfiltered$country, repl)
+m = match(gapminder_unfiltered$ncountry, ne$admin)
+(un = unique(gapminder_unfiltered$country[is.na(m)]))
+```
+so there are now 25 rather than 9 we can't match to natural earth
+polygons, and 
+
+```{r}
+gapminder_u_sf = st_sf(gapminder_unfiltered, geometry = ne$geometry[m])
+gapminder_u_sf$geometry
+sum(is.na(m))
+st_geometry(gapminder_u_sf) |> plot()
+```
+
+looks much better. Which other countries are now included, but absent from `gapminder`?
+
+```{r}
+setdiff(unique(gapminder_unfiltered$ncountry), unique(gapminder$ncountry))
+```
+
+We have 45 countries _more_ than in `gapminder`, meaning that we
+now have 45 - 25 + 9 = 29 countries _more_ matched with polygons.
+
+We could now, for instance, create a map for the last measured year:
+```{r}
+gapminder_u_sf |> 
+		filter(year == 2007) |> 
+		select(lifeExp) |> 
+		plot()
+```
+
+where South Sudan appears to be missing (it gained independence in 2011).
+
+Assessing missing-ness from plotting is a good check to find big
+ones (Russia), but not at all sufficient, since many countries are
+small. How many countries go invisible on a plot like the one above?
+Note that we plot country borders with thin lines (one pixel). 
+Suppose that for a country to be visible with color
+it must span at least, say 3 x 3 pixels.
+We can obtain the device size in pixels by
+```{r eval=FALSE}
+dev.size("px")
+```
+and let's say it is 1000 by 1000. Then, the size of a single pixel
+(when we do not have margins around the plot) at the equator is roughly
+```{r}
+library(units)
+(pix_size = 2 * pi * set_units(s2::s2_earth_radius_meters(), m) / 1000)
+```
+and the number of the Natural Earth countries with an
+area smaller than 9 equator-pixels is
+```{r}
+a = st_make_valid(ne) |> # the Natural Earth dataset is invalid on the sphere
+	st_area() |> 
+	na.omit()
+sum(a < 9 * pix_size^2)
+```
