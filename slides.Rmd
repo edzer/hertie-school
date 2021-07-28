@@ -14,6 +14,10 @@ output:
 knitr::opts_chunk$set(collapse = TRUE)
 ```
 
+Slides prepared for the [Data Science Summer
+School](https://socialdatascience.network/summerschool.html),
+Jul 30, 2021; see also the [course
+page](https://socialdatascience.network/courses/geodata.html).
 
 Program: 
 
@@ -22,15 +26,16 @@ Program:
 * 12:15 PM GeoData and Spatial Data Analysis with R (Part II)
 * 02:15 PM end
 
-Each full hour will have 45 minutes lecturing, followed by 15 mins Q&A.
+Each full hour will have about 45 minutes lecturing, followed by
+15 mins Q&A.
 
 # Context
 
-* **Why "GeoData and Spatial Data"?** Because the organisation chose
-that title for me. I consider "GeoData" and "Spatial Data"
-as identical. "Geo" refers to "Earth", so some spatial data,
+* **Why "GeoData and Spatial Data"?** The organisation chose
+that title. I consider "GeoData" and "Spatial Data"
+as equal. "Geo" refers to "Earth", so some spatial data,
 e.g. astronomic images or images taken through microscopes or
-MRT scans are less Earth-bound, and would be better described as
+MRT scans are less Earth-bound, and might be better described as
 "Spatial Data".
 * **Why "Data Analysis?"** Because this is a summer school on Data Science.
 * **Why with R?**  Because R is an open source environment **made for
@@ -90,24 +95,198 @@ but simpler). To do this, take the following steps:
 
 # Spatial data and geometries
 
-## What is so special about spatial data?
+## Special about spatial data
 
-## How can we represent spatial data in R?
+**All data are spatial** - data comes from observation, and
+observation needs to happen _somewhere_ and at _some time_.
+This makes all data spatial. For a lot of data, the location
+expressed in spatial, Earth-bound coordinates of observation is
+not of prime importance:
 
-## What does a coordinate mean?
+* if a patient undergoes a brain scan, the location of the scanner
+is not important; the location of the person relative to the
+scanner is
+* if a person receives a positive COVID-19 test result, the location
+of testing may not be important for the person's decision on whether
+to go into quarantine or not
+* for someone trying to do contact tracing, this person's location
+history may be most relevant, however
 
+With spatial data we mean data for which spatial locations
+(or relations) are known, and for which they play a role in the
+exploration, analysis or visualisation of the data.
+
+## Representing spatial data in R
+
+Several of the simple R data structures can be used to represent spatial
+data, examples are **columns in a data.frame**:
+
+```{r}
+head(quakes)
+```
+
+**a matrix**
+
+```{r}
+class(volcano)
+volcano[1:5,1:5]
+image(volcano)
+```
+
+**numeric vectors for polygon coordinates** with `NA` to separate individual rings:
+
+```{r}
+library(maps)
+m = map(regions="Australia", plot = FALSE, fill = TRUE)
+pols = cbind(m$x, m$y)
+dim(pols)
+head(cbind(m$x, m$y), 10)
+map(regions="Australia")
+```
+
+We will shortly see a few more structured approaches to represent
+spatial data, using _simple features_, _coverages_ or _rasters_.
+First let us look at what coordinates mean.
+
+## Coordinates
+
+With coordinates, we usually think a numbered measured along a ruler,
+where the ruler might be an imaginary line: it has an offset (0),
+a unit (m), and a constant direction. For spatial data we could have two
+imageginary lines perpendicular to each other, and we call this
+Cartesian space. Distance between $(x_1,y_1)$ and
+$(x_2,y_2)$ in Cartesian space is computed by Euclidean distance:
+$$\sqrt{(x_1-x_2)^2+(y_1-y_2)^2}$$
+
+The spatial data we just saw, above are _not_ of this kind:
+
+* the raster data (`volcano`) did _not_ have coordinates
+* the other examples had coordinates that are **ANGLES**,
+  distances along a circle (or ellipsoidal) arc:
 
 ```{r out.width='100%',echo=FALSE}
 knitr::include_graphics("https://keen-swartz-3146c4.netlify.app/sds_files/figure-html/sphere-1.png")
 ```
+Left: geocentric coordinates (Cartesian, three-dimensional,
+units metres); Right: spherical/ellipsoidal coordinates (angles,
+units degrees)
 
-Coordinates are either 
+Euclidean distances **do not work** for ellipsoidal coordinates:
+one degree longitude at the equator is about 111 km, at the poles
+it is 0 km.
 
 ## What does _coordinate reference system_ mean?
+
+"Data are not just numbers, they are numbers with a context" ([Cobb &
+Moore](https://www.jstor.org/stable/2975286?seq=1#metadata_info_tab_contents))
+
+Coordinate reference systems provide the context of coordinates:
+
+* they tell whether the coordinates are ellipsoidal (angles), or derived, projected (Cartesian) coordinates
+* in case they are projected, they detail the kind of projection used, so that the
+underlying ellipsoidal coordinates can be recovered
+* in **any** case, they point out which ellipsoidal model (datum) was used.
+
+Knowing this we can
+
+* convert between projected and unprojected, or to another projection
+* transform from one datum to another
+* combine the coordinates with any other coordinates that have a coordinate reference system
+
 ## Geometries, measures, predicates, transformers
+
+Geometries can be described in many ways. We use the [simple feature
+access]() specification that focuses on points, lines and polygons;
+the main types are:
+
+* points, `POINT(0 1)`
+* sets of points, `MULTIPOINT(0 1,10 8)`
+* linestrings, `LINESTRING(0 0,1 1)`
+* sets of linestrings, `MULTILINESTRING((0 0,1 1),(5 5,4 6))`
+* polygons, `POLYGON((0 0,1 0,1 1,0 0))`
+* sets of polygons, `MULTIPOLYGON(((0 0,1 0,1 1,0 0)), ((3 3,4 3,4 4,3 3)))`
+* combinations (mixes) of these `GEOMETRYCOLLECTION(POINT(0 1),LINESTRING(0 0,1 1))`
+
+Linestrings are formed by sequences of points, where straight
+lines are thought of as connecting them. Polygons are formed of
+non self-intersecting linestrings that form closed rings (first
+coordinate equals last coordinate).
+
+An example:
+```{r}
+library(sf)
+(nc = read_sf(system.file("gpkg/nc.gpkg", package="sf")))
+library(ggplot2)
+ggplot() + geom_sf(data = nc, aes(fill = SID74))
+```
+
+## Coverages, rasters
+
+Coverages are tesselations (subdivisions) of space into regions,
+where _every_ point can be uniquely assigned to a subregion. 
+
+With `POLYGONS` we cannot do that, as two polygons that share
+a boundary cannot tell to which polygon a point on the shared
+boundary belongs.
+
+Rasters are _regular_ tesselations, which uniquely subdivide space
+into square or rectangular areas (raster cells, or pixels).
+
+An example of a raster:
+```{r}
+library(stars)
+(L7 = read_stars(system.file("tif/L7_ETMs.tif", package = "stars")))
+ggplot() + geom_stars(data = L7) + facet_wrap(~band) + coord_equal()
+```
+
+or simply:
+```{r}
+plot(L7)
+```
+
 ## Q&A
 
-# Attributes
+# Attributes, support
+
+Spatial data gets more interesting when we not only consider the
+geometric properties, but also other properties, which we call
+(feature) attributes. 
+
+A crucial consideration here is _support_. Non-point geometries
+(lines, polygons) contain essentially an infinite number of points.
+If we have an attribute of such a geometry, the question is whether
+the attribute is valid for
+
+* each point in the geometry ("point support")
+* the collection of points ("line/area/block support")
+
+An example of point support: if we have a polygon of a soil map
+delineating the area with sandy soils, it indicates (up to mapping
+errors) that _every_ point in the polygon has a sandy soil.
+
+An example of area support: if we have an administrative region,
+the population density of that region is not a density measure for
+_every_ point in the area, but an _aggregate_ value relevant for
+the polygon as a whole.
+
+When we analyse area support data (aggregates), choosing
+a different set of polygons leads to different results,
+a phenomenon known as the _modifiable areal unit problem_
+([MAUP](https://en.wikipedia.org/wiki/Modifiable_areal_unit_problem)).
+Intentially manipulating polygons such that a particular
+analysis result is obtained, e.g. in election outcomes, is called
+[gerrymandering](https://en.wikipedia.org/wiki/Gerrymandering).
+
+A common operation on areal data is to generate attributes for a
+new spatial subdivision, often indicated by
+
+* _upscaling_  when the new units are larger
+* _downscaling_ when the new units are smaller
+
+When doing this, for spatially _extensive_ variables (e.g. population
+counts) their _sum_ needs to be preserved, for spatially _intensive_
+variables (e.g. population density) their _mean_ needs to be
+preserved.
 
 ## `gapminder` example
 
@@ -249,3 +428,229 @@ a = st_make_valid(ne) |> # the Natural Earth dataset is invalid on the sphere
 	na.omit()
 sum(a < 9 * pix_size^2)
 ```
+
+If we show the matrix of `lifeExp` by country and year,
+```{r}
+co = as.factor(gapminder_u_sf$ncountry)
+minyear = min(gapminder_u_sf$year)
+ye = gapminder_u_sf$year - minyear + 1
+m = matrix(NA, length(levels(co)), length(unique(ye)))
+m[cbind(co,ye)] = gapminder_u_sf$lifeExp
+image(x = sort(unique(ye)) + minyear - 1, z = t(m))
+```
+we see a clear pattern of (more) valid values for every
+year ending in 2 or 7. We can show maps for each of those
+years by:
+
+```{r}
+sel = gapminder_u_sf$year %% 5 == 2 # 2002, 2007 etc
+ggplot() + geom_sf(data = gapminder_u_sf[sel,], aes(fill = lifeExp)) +
+		facet_wrap(~year)
+```
+
+```{r}
+ggplot() + geom_sf(data = gapminder_sf, aes(fill = lifeExp)) +
+		facet_wrap(~year)
+```
+
+
+## raster data
+
+Raster data data are used for various phenomena, but are in
+particular suitable for phenomena that vary continuously over space,
+such as elevation, temperature, air quality, and so on. Also imagery,
+when georeferenced, is provided as raster data.
+
+Raster data is usually regular, but may come in other
+forms. Converting (projecting, reprojecting, unprojecting) may
+cause curvilinear grids; regridding these is called _warping_,
+may cause some data loss and is not invertible.
+
+```{r out.width='100%',echo=FALSE}
+knitr::include_graphics("https://keen-swartz-3146c4.netlify.app/sds_files/figure-html/rastertypes01-1.png")
+```
+
+Color imagery comes with three bands, satellite imagery, as shown
+above, typically has more than three bands. 
+
+## raster time series
+
+Video is a time sequence of RGB images; satellite images also come as
+repeated time series but at much lower temporal resolution. Weather
+data ("nowcasts"), weather forecasts, climate predictions, land or
+sea surface temperatures are all created, using models, to create
+raster time series. Here is an example:
+
+```{r}
+w = system.file("nc/bcsd_obs_1999.nc", package = "stars") |>
+    read_stars()
+w
+```
+
+Where we see monthly data of precipitation (and temperature).
+We also see that `x` and `y` do, but `time` does not have regular
+intervals. From the data set alone, it is also not clear whether
+monthly _total_ precipitation (and mean temperature) are given,
+or values for the date shown (most likely: the former; this is
+temporal _support_).
+
+We can plot these data, and add some state boundary for reference by:
+
+```{r}
+nc = read_sf(system.file("gpkg/nc.gpkg", package="sf")) |>
+	st_geometry()
+nc.u = st_union(nc)
+hook = function() plot(st_geometry(nc.u), add = TRUE, border = 'orange')
+plot(w, hook = hook)
+```
+
+or by using `ggplot2`:
+
+```{r}
+ggplot() + geom_stars(data = w) + 
+		geom_sf(data = st_cast(nc.u, "MULTILINESTRING"), col = 'orange') + 
+		facet_wrap(~as.Date(time))
+```
+
+## image data cubes, image collections
+
+Higher-dimensional data cubes are for instance obtained by remote
+sensing imagery, where dimensions include `x`, `y` (raster), `band`
+(color / wavelength) and `time`. Satellite imagery for larger areas
+is often distributed as images (tiles) for different coordinate
+reference systems, and with times of the overpass of satellite.
+This means that _warping_ and aggregation is required to create a
+**regular** data cube out of such image collections. A
+recent blog entry on how to do this (reproducibly) is found
+[here](https://r-spatial.org/r/2021/04/23/cloud-based-cubes.html).
+
+Although much of this data is free-for-download, analysing this
+data over a large area (even at low resolution) and/or over a longer
+time span quickly makes the download option unfeasible.  Using cloud
+platforms that already serve (fast) access to complete data archive
+are the only alternative.
+
+## Q&A
+
+# Models
+
+The goal of data analysis is often beyond descriptive statistics
+and exploratory graphs, but may involve
+
+* inference (estimation) of e.g. relationships between variables, or properties of the process that most likely generated the data 
+* prediction of unobserved values (e.g. missing values in `gapminder`, spatial and/or temporal interpolation) from observations
+* predicting properties that were not directly, or fully, observed (e.g. predicting land cover or land use from satellite images and ground truth observations)
+
+Problems special to _spatial data_ often feed back to the sampling process and the goals:
+
+1. Can analysis proceed design-based? Yes if some form of _random sampling_ was used to collect the data, inclusion probabilities are known, and statistics for the sampling units are required (and not e.g. spatial interpolation between samples)
+2. If the answer is "no", analysis proceeds model-based, and if the data are spatially correlated, this correlation needs to be addressed in the analysis.
+
+"Classical" modelling approaches (e.g. linear regression, but also most machine learning approaches) assume IID data: Independent, Identically Distributed. If analysis proceeds "model-based", data are not independent. If sampling is biased, observations are also not identically distributed.
+
+## Point patterns
+
+Wind turbine in Germany, e.g. from [here](https://opendata-esri-de.opendata.arcgis.com/datasets/esri-de-content::-onshore-windkraftanlagen-in-deutschland/explore?location=51.163621%2C10.453852%2C6.67) we can download the wind turbines as a GeoJSON file, which we will assume resides in directory `~/Downoads`
+
+```{r,eval = file.exists("~/Downloads/_Onshore_Windkraftanlagen_in_Deutschland.geojson")}
+wt = read_sf("~/Downloads/_Onshore_Windkraftanlagen_in_Deutschland.geojson")
+library(rnaturalearth)
+library(tidyverse)
+de = ne_countries(scale = 50, returnclass = "sf") |>
+	filter(admin == "Germany") 
+plot(st_geometry(de), border = 'red')
+plot(st_geometry(wt), add = TRUE, cex = .5)
+
+```
+
+We can create a `ppp` object from this by
+
+```{r error=TRUE}
+library(spatstat)
+pp = st_geometry(wt)
+window = st_geometry(de) 
+wt = as.ppp(c(window, pp))
+```
+
+Which won't work; we'll have to project these data first, e.g. to
+UTM zone 32N. We also need to remove points with missing (empty)
+geometries.
+```{r}
+crs = st_crs("EPSG:32632")
+pp = st_transform(pp, crs)[!st_is_empty(pp)]
+window = st_transform(window, crs)
+wt = as.ppp(c(window, pp))
+```
+
+```{r}
+plot(density(wt, bw = "SJ"))
+plot(window, add = TRUE)
+```
+
+Of course, this density depends on the bandwidth, and we can create more
+rough or smooth versions by setting it:
+
+```{r}
+plot(density(wt, sigma = 1e4))
+plot(window, add = TRUE)
+```
+
+```{r}
+plot(density(wt, sigma = 1e6))
+plot(window, add = TRUE)
+```
+
+### Second order moments
+
+The K function counts for a varying window size $r$ how many
+additional points are found within a window of radius $r$ centered
+at each point, and compares that to a completely spatially random
+(CSR, Poisson) process.
+
+```{r}
+plot(Kest(wt))
+```
+
+One can compute an envelope around the CSR model (which is omitted here
+because of excessive runtime)
+```{r eval=FALSE}
+plot(envelope(wt, Kest))
+```
+
+Another measure is the G-function, which estimates the nearest neighbour
+distribution function from a point pattern.
+
+```{r}
+plot(Gest(wt))
+```
+
+We see that ther is a clear point mass at distance zero, indicating many
+duplicates. We can remore duplicates using `unique()`, and see a strong
+difference:
+
+```{r}
+plot(Gest(unique(wt)))
+```
+
+For this function, the envelope is quickly computed:
+```{r}
+plot(envelope(unique(wt), Gest))
+```
+
+and indicates we have a significant deviation from CSR (Poisson,
+theoretical), with nearest neighbour distances much more abundant
+then expected (clustering, attraction).
+
+
+## Geostatistical data
+
+## Lattice data
+
+## Q&A
+
+```{r}
+save.image()
+sessionInfo()
+```
+
+
