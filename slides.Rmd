@@ -64,6 +64,16 @@ but simpler). To do this, take the following steps:
 6. In RStudio, click "knit" to recreate the entire rendered document, which _runs all the R chunks_
 7. For running individual R chunks, (notebook "cells"), use the arrows "Run all chunks above", after which you can use "Run current chunk"
 
+## Packages needed
+
+All packages needed can be installed with
+
+```{r eval=FALSE}
+install.packages(c("gapminder", "gstat", "maps", "mapview",
+  "rnaturalearth", "sf", "spatstat", "stars", "stringr", "tidyverse",
+  "units")
+```
+
 ## What to expect?
 
 10-11: Spatial data and geometries
@@ -754,7 +764,6 @@ we established neighbourhood relationships:
 ```{r}
 library(spdep)
 pol_pres15 |> poly2nb(queen = TRUE) -> nb_q
-library
 nb_q |> nb2listw(style = "B") -> lw_q_B
 glance_htest <- function(ht) c(ht$estimate,
     "Std deviate" = unname(ht$statistic),
