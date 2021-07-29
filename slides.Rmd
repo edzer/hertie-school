@@ -750,6 +750,7 @@ The following example was taken from Chapters 14-17 of [SDS](https://r-spatial.o
 The analysed variable is first round turnout proportion of registered voters in municipalities and Warsaw burroughs in the 2015 Polish presidential election.
 
 ```{r}
+# install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
 data(pol_pres15, package = "spDataLarge")
 pol_pres15 |>
     subset(select = c(TERYT, name, types)) |>
@@ -778,7 +779,70 @@ glance_htest <- function(ht) c(ht$estimate,
 The book chapter (15) then further details this into local Moran's
 I tests.
 
+Spatial regression models are classical regression models extended
+with effects that take care of spatial nature of the data, using
+either
 
+* a spatially correlated residual (e.g. characterised by a single
+  correlation coefficient for first-order neighbours)
+* a spatial autoregression model, where the (mean of) responses
+  in neighbouring polygons is added as a regressor
+
+Chapter 16 and 17 of [SDS](https://r-spatial.org/book) gives examples
+of several of the usual approaches, for this.
+
+With spatial time series, such as in `gapminder`, panel linear models
+can be considered,
+
+```{r}
+library(plm)
+plm(log(lifeExp) ~ log(gdpPercap), gapminder, index = c("country", "year")) |>
+	summary()
+```
+
+but these entirely ignore spatial (neighbourhood) effects.
+For _spatial_ panel linear models we follow [Milo & Piras,
+2012](https://www.jstatsoft.org/article/view/v047i01); we must
+first create a spatial weight matrix, which is row-standardised:
+
+```{r}
+gm = gapminder_sf |> filter(year == 2002) # or any other
+wm = st_intersects(gm, gm) |> 
+	as.matrix()
+diag(wm) = 0 # remove self-intersections
+dimnames(wm) = list(gm$country, gm$country)
+# row-standardise:
+wm_2 = apply(wm, 1, function(x) { s = sum(x); if (s == 0) 0*x else x/(sum(x)) }) |>
+	t()
+```
+
+We need to remove countries with zero neighbours:
+
+```{r}
+wm_nn = which(apply(wm_2, 1, sum) == 0)
+gmlistw = mat2listw(wm_2[-wm_nn, -wm_nn])
+gapminder_nn = gapminder |> 
+	filter(!country %in% names(wm_nn)) |>
+	select(-continent) # so that column 1 and 2 are individual, time
+```
+
+and can then fit the most simple model by
+```{r}
+library(splm)
+spml(log(lifeExp) ~ log(gdpPercap), gapminder_nn, listw = gmlistw) |>
+	summary()
+```
+
+and a model that also has a spatial autoregressive component by
+```{r}
+spml(log(lifeExp) ~ log(gdpPercap), gapminder_nn, listw = gmlistw,
+		model = "random", lag = TRUE) |>
+	summary()
+```
+
+Note that it was not further examined whether this model makes
+any sense, or the transformations; this is purely meant as an
+illustration how to get `spml` to work.
 
 ## Q&A
 
