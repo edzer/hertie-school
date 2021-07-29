@@ -438,7 +438,8 @@ m = matrix(NA, length(levels(co)), length(unique(ye)))
 m[cbind(co,ye)] = gapminder_u_sf$lifeExp
 image(x = sort(unique(ye)) + minyear - 1, z = t(m))
 ```
-we see a clear pattern of (more) valid values for every
+
+where we see a clear pattern of (more) valid values for every
 year ending in 2 or 7. We can show maps for each of those
 years by:
 
@@ -466,7 +467,7 @@ forms. Converting (projecting, reprojecting, unprojecting) may
 cause curvilinear grids; regridding these is called _warping_,
 may cause some data loss and is not invertible.
 
-```{r out.width='100%',echo=FALSE}
+```{r out.width='70%',echo=FALSE}
 knitr::include_graphics("https://keen-swartz-3146c4.netlify.app/sds_files/figure-html/rastertypes01-1.png")
 ```
 
@@ -553,21 +554,30 @@ Problems special to _spatial data_ often feed back to the sampling process and t
 Wind turbine in Germany, e.g. from [here](https://opendata-esri-de.opendata.arcgis.com/datasets/esri-de-content::-onshore-windkraftanlagen-in-deutschland/explore?location=51.163621%2C10.453852%2C6.67) we can download the wind turbines as a GeoJSON file, which we will assume resides in directory `~/Downoads`
 
 ```{r,eval = file.exists("~/Downloads/_Onshore_Windkraftanlagen_in_Deutschland.geojson")}
-wt = read_sf("~/Downloads/_Onshore_Windkraftanlagen_in_Deutschland.geojson")
+wt_sf = read_sf("~/Downloads/_Onshore_Windkraftanlagen_in_Deutschland.geojson")
 library(rnaturalearth)
 library(tidyverse)
 de = ne_countries(scale = 50, returnclass = "sf") |>
 	filter(admin == "Germany") 
 plot(st_geometry(de), border = 'red')
-plot(st_geometry(wt), add = TRUE, cex = .5)
-
+plot(st_geometry(wt_sf), add = TRUE, cex = .5)
 ```
+
+If we create an interactive plot for this dataset with `mapview`, using
+```{r}
+library(mapview)
+mapviewOptions(fgb = FALSE) # not needed locally
+mapview(wt_sf)
+```
+we can zoom and click on points to see their attributes. We also see
+that different color tones indicate overplotted, identical points;
+there is no way of
 
 We can create a `ppp` object from this by
 
 ```{r error=TRUE}
 library(spatstat)
-pp = st_geometry(wt)
+pp = st_geometry(wt_sf)
 window = st_geometry(de) 
 wt = as.ppp(c(window, pp))
 ```
@@ -644,7 +654,122 @@ then expected (clustering, attraction).
 
 ## Geostatistical data
 
+Geostatistical analysis is often focused on the interpolation of
+a spatially continuous variable (a _field_), from scattered point
+observations. Consider the wind turbine data from the previous section,
+
+```{r}
+wt_sf$Power = as.numeric(gsub(",", ".", gsub("\\.", "", wt_sf$Gesamtleistung__MW_)))
+plot(wt_sf["Power"], pch = 16, logz = TRUE, reset = FALSE)
+plot(st_geometry(de), add = TRUE)
+```
+
+then we see scattered values, which we could _theoretically_
+interpolate but the outcome would be meaningless: at unobserved
+locations there are no wind turbines, and the power of a turbine
+is not an indication of e.g.  wind potential (as they are all of
+different size).
+
+An example of a data set we could meaningfully interpolate is about
+air quality, with annual mean NO2 concentrations, measured at rural
+background stations. The data are from package `gstat`, but from a
+not-yet-released version, so we read them directly from GitHub:
+
+```{r}
+url = "https://raw.githubusercontent.com/r-spatial/gstat/master/inst/external/no2.csv"
+no2.sf = read.csv(url) |> 
+    st_as_sf(coords = c("station_longitude_deg", "station_latitude_deg"),
+			 crs = st_crs(4326))
+plot(no2.sf["NO2"], pch = 16, reset = FALSE)
+plot(st_geometry(de), add = TRUE)
+```
+
+```{r}
+library(gstat)
+v = variogram(NO2~1, no2.sf)
+v.fit = fit.variogram(v, vgm(1, "Exp", 100, 1))
+plot(v, v.fit, plot.numbers = TRUE, xlab = "distance (km)")
+```
+
+```{r}
+library(stars)
+grd = st_as_stars(st_bbox(de))
+st_crs(grd) = st_crs(no2.sf)
+k = krige(NO2~1, no2.sf, grd, v.fit)
+plot(k["var1.pred"], breaks = "equal", reset = FALSE, axes = TRUE)
+plot(st_geometry(de), add = TRUE, border = 'orange')
+plot(st_geometry(no2.sf), col = 'green', add = TRUE, pch = 3)
+```
+
+Note that this procedure used ellipsoidal coordinates all the way,
+and computed distances correctly nevertheless. In many cases, it
+is more convenient (or appropriate) to carry out geostatistical
+analyses using projected coordinates:
+
+```{r}
+no2.sf_utm = st_transform(no2.sf, st_crs("EPSG:32632"))
+de_utm = st_transform(de, st_crs("EPSG:32632"))
+v = variogram(NO2~1, no2.sf_utm)
+v.fit = fit.variogram(v, vgm(1, "Exp", 10000, 1))
+plot(v, v.fit, plot.numbers = TRUE, xlab = "distance (m)")
+```
+
+```{r}
+grd_utm = st_as_stars(st_bbox(de_utm))
+k = krige(NO2~1, no2.sf_utm, grd_utm, v.fit)
+plot(k["var1.pred"], breaks = "equal", reset = FALSE, axes = TRUE)
+plot(st_geometry(de_utm), add = TRUE, border = 'orange')
+plot(st_geometry(no2.sf_utm), col = 'green', add = TRUE, pch = 3)
+```
+
+We can of course crop the map to the area of Germany
+
+```{r}
+plot(st_crop(k,de_utm)["var1.pred"], reset = FALSE)
+plot(st_geometry(de_utm), add = TRUE, border = 'orange')
+plot(st_geometry(no2.sf_utm), col = 'green', add = TRUE, pch = 3)
+```
+
+but in general field variables like air quality don't "stop" at
+administrative boundaries.
+
 ## Lattice data
+
+The following example was taken from Chapters 14-17 of [SDS](https://r-spatial.org/book).
+
+The analysed variable is first round turnout proportion of registered voters in municipalities and Warsaw burroughs in the 2015 Polish presidential election.
+
+```{r}
+data(pol_pres15, package = "spDataLarge")
+pol_pres15 |>
+    subset(select = c(TERYT, name, types)) |>
+    head()
+library(tmap)
+tm_shape(pol_pres15) + tm_fill("types")
+```
+
+We can compute Moran's I, a measure for spatial autocorrelation, when
+we established neighbourhood relationships:
+
+```{r}
+library(spdep)
+pol_pres15 |> poly2nb(queen = TRUE) -> nb_q
+library
+nb_q |> nb2listw(style = "B") -> lw_q_B
+glance_htest <- function(ht) c(ht$estimate,
+    "Std deviate" = unname(ht$statistic),
+    "p.value" = unname(ht$p.value))
+(pol_pres15 |>
+        st_drop_geometry() |>
+        subset(select = I_turnout, drop = TRUE) -> z) |>
+    moran.test(listw = lw_q_B, randomisation = FALSE) |>
+    glance_htest()
+```
+
+The book chapter (15) then further details this into local Moran's
+I tests.
+
+
 
 ## Q&A
 
