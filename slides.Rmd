@@ -71,7 +71,7 @@ All packages needed can be installed with
 ```{r eval=FALSE}
 install.packages(c("gapminder", "gstat", "maps", "mapview",
   "rnaturalearth", "sf", "spatstat", "stars", "stringr", "tidyverse",
-  "units")
+  "units", "spdep", "plm", "splm"))
 ```
 
 ## What to expect?
